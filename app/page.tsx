@@ -1,11 +1,12 @@
 "use client";
 
 import dynamic from 'next/dynamic';
-import { type ChangeEvent, useState } from 'react';
+import { type ChangeEvent, useRef, useState } from 'react';
 import { 
   Download, Image as ImageIcon, Layers, LayoutTemplate, 
-  MousePointer2, Palette, Share2, Square, Type, Settings2, Link
+  MousePointer2, Palette, Share2, Square, Type, Settings2, Link, Pipette
 } from 'lucide-react';
+import type { IdCanvasHandle, SelectedElementInfo } from '../src/components/IdCanvas';
 
 const Background3D = dynamic(() => import('../src/components/Background3D'), { ssr: false });
 const IdCanvas = dynamic(() => import('../src/components/IdCanvas'), { ssr: false });
@@ -16,6 +17,13 @@ export default function Home() {
   const [image, setImage] = useState<string | null>(null);
   const [theme, setTheme] = useState<ThemeName>('classic');
   const [textColor, setTextColor] = useState<string>('#000000');
+  const [selected, setSelected] = useState<SelectedElementInfo | null>(null);
+  const idCanvasRef = useRef<IdCanvasHandle>(null);
+
+  const handleSelectedColorChange = (color: string) => {
+    idCanvasRef.current?.setSelectedColor(color);
+    setSelected((prev) => (prev ? { ...prev, color } : prev));
+  };
 
   const handleImageUpload = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -104,12 +112,18 @@ export default function Home() {
           {/* Dynamic Interactive Canvas */}
           <div className="relative z-10 flex w-full items-center justify-center">
               <div className="w-[480px] flex items-center justify-center">
-              <IdCanvas uploadedImage={image} theme={theme} textColor={textColor} />
+              <IdCanvas
+                ref={idCanvasRef}
+                uploadedImage={image}
+                theme={theme}
+                textColor={textColor}
+                onSelectObject={setSelected}
+              />
             </div>
           </div>
 
           <p className="relative z-10 mt-6 font-mono text-xs font-bold bg-white/80 backdrop-blur px-4 py-2 border-2 border-black shadow-[4px_4px_0px_#FF007A]">
-            💡 Double-click any text on the card to edit. Drag the photo to position it.
+            💡 Click any part of the card to select it, then pick a color on the right. Double-click text to edit it. Drag the photo to position it.
           </p>
         </section>
 
@@ -131,8 +145,25 @@ export default function Home() {
             <h3 className="font-mono text-sm font-bold uppercase mb-4 flex items-center gap-2"><Settings2 size={16}/> Properties</h3>
             
               <div className="space-y-4">
+              {/* Canva-style: recolor whatever is currently selected on the canvas */}
+              <div className={`border-2 p-3 ${selected ? 'border-black bg-[#FFE600]/20 shadow-[2px_2px_0px_#000]' : 'border-dashed border-gray-300'}`}>
+                <p className="font-mono text-xs font-bold mb-2 uppercase text-gray-500 flex items-center gap-1"><Pipette size={12}/> Selected Element</p>
+                {selected ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      className="h-9 w-12 p-0 border-2 border-black shrink-0"
+                      value={selected.color}
+                      onChange={(e) => handleSelectedColorChange(e.target.value)}
+                    />
+                    <span className="font-mono text-xs font-bold">{selected.label}</span>
+                  </div>
+                ) : (
+                  <p className="font-mono text-xs text-gray-400">Click any part of the card to recolor it.</p>
+                )}
+              </div>
               <div>
-                <p className="font-mono text-xs font-bold mb-2 uppercase text-gray-500">Text Color</p>
+                <p className="font-mono text-xs font-bold mb-2 uppercase text-gray-500">Text Color (Name/Stack/Role)</p>
                 <div className="flex items-center gap-2">
                   <input type="color" className="h-8 w-12 p-0 border-2 border-black" value={textColor} onChange={(e) => setTextColor(e.target.value)} />
                   <div className="flex gap-2">

@@ -1,10 +1,17 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react';
 import {
   Canvas as FabricCanvas,
   Circle,
   FabricImage,
+  FabricObject,
   Gradient,
   IText,
   Rect,
@@ -12,11 +19,24 @@ import {
 } from 'fabric';
 
 type ThemeName = 'classic' | 'sunset' | 'neon';
+type ColorProp = 'fill' | 'stroke';
+
+export interface SelectedElementInfo {
+  label: string;
+  color: string;
+}
+
+export interface IdCanvasHandle {
+  /** Apply a color to whichever element is currently selected on the canvas. */
+  setSelectedColor: (color: string) => void;
+}
 
 interface IdCanvasProps {
   uploadedImage: string | null;
   theme: ThemeName;
   textColor?: string;
+  /** Fired whenever the selected element (or lack thereof) changes. */
+  onSelectObject?: (info: SelectedElementInfo | null) => void;
 }
 
 const THEME_STYLES: Record<ThemeName, { bg: string; text: string; accent: string; cardBody: string }> = {
@@ -25,7 +45,22 @@ const THEME_STYLES: Record<ThemeName, { bg: string; text: string; accent: string
   neon: { bg: '#0b0b0f', text: '#39ff14', accent: '#ff00ff', cardBody: '#070707' },
 };
 
-export default function IdCanvas({ uploadedImage, theme, textColor }: IdCanvasProps) {
+// Locks movement/scale/rotation on a shape so it can be clicked & recolored
+// without a user accidentally dragging it out of place.
+const LOCK_TRANSFORM = {
+  hasControls: false,
+  hasBorders: true,
+  lockMovementX: true,
+  lockMovementY: true,
+  lockScalingX: true,
+  lockScalingY: true,
+  lockRotation: true,
+};
+
+const IdCanvas = forwardRef<IdCanvasHandle, IdCanvasProps>(function IdCanvas(
+  { uploadedImage, theme, textColor, onSelectObject },
+  ref,
+) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const photoRef = useRef<FabricImage | null>(null);
   const headerTextRef = useRef<IText | null>(null);
@@ -33,6 +68,31 @@ export default function IdCanvas({ uploadedImage, theme, textColor }: IdCanvasPr
   const stackInputRef = useRef<IText | null>(null);
   const roleInputRef = useRef<IText | null>(null);
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
+
+  // Maps every colorable fabric object -> a human label + which property
+  // ("fill" or "stroke") actually carries its visible color.
+  const objLabelMapRef = useRef<Map<FabricObject, { label: string; colorProp: ColorProp }>>(new Map());
+  // Persists user-picked colors (keyed by label) across theme rebuilds,
+  // since switching theme recreates every canvas object from scratch.
+  const customColorsRef = useRef<Record<string, string>>({});
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      setSelectedColor: (color: string) => {
+        if (!fabricCanvas) return;
+        const obj = fabricCanvas.getActiveObject();
+        if (!obj) return;
+        const info = objLabelMapRef.current.get(obj);
+        if (!info) return;
+        obj.set(info.colorProp, color);
+        customColorsRef.current[info.label] = color;
+        fabricCanvas.requestRenderAll();
+        onSelectObject?.({ label: info.label, color });
+      },
+    }),
+    [fabricCanvas, onSelectObject],
+  );
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -48,6 +108,16 @@ export default function IdCanvas({ uploadedImage, theme, textColor }: IdCanvasPr
 
     setFabricCanvas(canvas);
     const styles = THEME_STYLES[theme];
+    const labelMap = new Map<FabricObject, { label: string; colorProp: ColorProp }>();
+
+    // Registers an object as colorable: tags it selectable/locked-in-place
+    // and remembers its label + which property drives its visible color.
+    const registerColorable = (obj: FabricObject, label: string, colorProp: ColorProp = 'fill') => {
+      obj.set({ selectable: true, evented: true, ...LOCK_TRANSFORM });
+      labelMap.set(obj, { label, colorProp });
+      const override = customColorsRef.current[label];
+      if (override) obj.set(colorProp, override);
+    };
 
     // ==========================================
     // ALL COORDINATES ARE BASED ON X=225 (Center)
@@ -63,6 +133,7 @@ export default function IdCanvas({ uploadedImage, theme, textColor }: IdCanvasPr
       shadow: new Shadow({ color: 'rgba(0,0,0,0.5)', blur: 15, offsetX: 10, offsetY: 10 }),
       selectable: false, evented: false,
     });
+    registerColorable(cardBg, 'Card Background');
 
     // 2. Inner White Body (for text area)
     const cardBody = new Rect({
@@ -72,12 +143,17 @@ export default function IdCanvas({ uploadedImage, theme, textColor }: IdCanvasPr
       originX: 'center', originY: 'center',
       selectable: false, evented: false,
     });
+    registerColorable(cardBody, 'Inner Card Body');
 
     // 3. Lanyard Hardware (Top Clip)
     const lanyardStrap = new Rect({ left: centerX, top: 20, width: 30, height: 40, fill: '#FFE600', stroke: '#000', strokeWidth: 2, originX: 'center', originY: 'center', selectable: false, evented: false });
+    registerColorable(lanyardStrap, 'Lanyard Strap');
     const metalRing = new Circle({ left: centerX, top: 60, radius: 25, fill: 'transparent', stroke: '#A0A0A0', strokeWidth: 6, originX: 'center', originY: 'center', selectable: false, evented: false });
+    registerColorable(metalRing, 'Metal Ring', 'stroke');
     const clipBase = new Rect({ left: centerX, top: 85, width: 60, height: 25, fill: '#E0E0E0', rx: 5, ry: 5, stroke: '#666', strokeWidth: 2, originX: 'center', originY: 'center', selectable: false, evented: false });
+    registerColorable(clipBase, 'Clip Base');
     const cardHole = new Rect({ left: centerX, top: 95, width: 60, height: 15, fill: '#FFFDE8', rx: 7, ry: 7, stroke: '#000', strokeWidth: 3, originX: 'center', originY: 'center', selectable: false, evented: false });
+    registerColorable(cardHole, 'Card Hole');
 
     // 4. Header Text
     const headerText = new IText("HACKER HOUSE GOA '26", {
@@ -87,6 +163,7 @@ export default function IdCanvas({ uploadedImage, theme, textColor }: IdCanvasPr
       selectable: true, editable: true,
     });
     headerTextRef.current = headerText;
+    registerColorable(headerText, 'Header Text');
 
     // 5. Polaroid Photo Frame
     const polaroidFrame = new Rect({
@@ -96,12 +173,14 @@ export default function IdCanvas({ uploadedImage, theme, textColor }: IdCanvasPr
       shadow: new Shadow({ color: 'rgba(0,0,0,0.3)', blur: 5, offsetX: 3, offsetY: 3 }),
       selectable: false, evented: false,
     });
+    registerColorable(polaroidFrame, 'Photo Frame');
     const photoMaskRect = new Rect({
       left: centerX, top: 255, width: 160, height: 160,
       fill: '#CCCCCC', stroke: '#000', strokeWidth: 2,
       originX: 'center', originY: 'center',
       selectable: false, evented: false,
     });
+    registerColorable(photoMaskRect, 'Photo Mask');
 
     // --- EDITABLE DATA FIELDS ---
     // Anchoring these to the left side of the inner card for clean alignment
@@ -113,21 +192,30 @@ export default function IdCanvas({ uploadedImage, theme, textColor }: IdCanvasPr
 
     // Name
     const nameLabel = new IText("NAME", { left: labelX, top: 415, ...labelProps });
+    registerColorable(nameLabel, 'Name Label');
     const nameInput = new IText("YASH JAIN", { left: inputX, top: 415, ...inputProps });
     nameInputRef.current = nameInput;
+    registerColorable(nameInput, 'Name Text');
     const nameLine = new Rect({ top: 430, ...lineProps });
+    registerColorable(nameLine, 'Name Divider');
 
     // Stack
     const stackLabel = new IText("STACK", { left: labelX, top: 460, ...labelProps });
+    registerColorable(stackLabel, 'Stack Label');
     const stackInput = new IText("NEXT.JS / TS", { left: inputX, top: 460, ...inputProps });
     stackInputRef.current = stackInput;
+    registerColorable(stackInput, 'Stack Text');
     const stackLine = new Rect({ top: 475, ...lineProps });
+    registerColorable(stackLine, 'Stack Divider');
 
     // Role
     const roleLabel = new IText("ROLE", { left: labelX, top: 505, ...labelProps });
+    registerColorable(roleLabel, 'Role Label');
     const roleInput = new IText("FULL-STACK BUILDER", { left: inputX, top: 505, ...inputProps });
     roleInputRef.current = roleInput;
+    registerColorable(roleInput, 'Role Text');
     const roleLine = new Rect({ top: 520, ...lineProps });
+    registerColorable(roleLine, 'Role Divider');
 
     // --- HOLOGRAPHIC FOIL OVERLAY ---
     const foilGradient = new Gradient({
@@ -153,6 +241,7 @@ export default function IdCanvas({ uploadedImage, theme, textColor }: IdCanvasPr
       fontFamily: 'monospace', fontSize: 16, fontWeight: 'bold',
       fill: 'rgba(255,255,255,0.9)', selectable: false, evented: false,
     });
+    registerColorable(foilText, 'Foil Text');
 
     // --- PLASTIC GLOSS OVERLAY ---
     const gloss = new Rect({
@@ -183,6 +272,8 @@ export default function IdCanvas({ uploadedImage, theme, textColor }: IdCanvasPr
       gloss // Top Gloss
     );
 
+    objLabelMapRef.current = labelMap;
+
     // Apply initial textColor override if provided
     if (textColor) {
       if (nameInputRef.current) nameInputRef.current.set('fill', textColor);
@@ -191,11 +282,35 @@ export default function IdCanvas({ uploadedImage, theme, textColor }: IdCanvasPr
       canvas.requestRenderAll();
     }
 
+    // --- SELECTION -> "click any component to recolor it" ---
+    const reportSelection = () => {
+      const obj = canvas.getActiveObject();
+      if (!obj) {
+        onSelectObject?.(null);
+        return;
+      }
+      const info = objLabelMapRef.current.get(obj);
+      if (!info) {
+        onSelectObject?.(null);
+        return;
+      }
+      const raw = obj.get(info.colorProp);
+      const color = typeof raw === 'string' ? raw : '#000000';
+      onSelectObject?.({ label: info.label, color });
+    };
+    canvas.on('selection:created', reportSelection);
+    canvas.on('selection:updated', reportSelection);
+    canvas.on('selection:cleared', () => onSelectObject?.(null));
+
+    canvas.requestRenderAll();
+
     return () => {
       photoRef.current = null;
       setFabricCanvas(null);
+      onSelectObject?.(null);
       canvas.dispose();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme]);
 
   // Handle Image Injection
@@ -253,4 +368,6 @@ export default function IdCanvas({ uploadedImage, theme, textColor }: IdCanvasPr
       <canvas ref={canvasRef} width={450} height={650} />
     </div>
   );
-}
+});
+
+export default IdCanvas;
