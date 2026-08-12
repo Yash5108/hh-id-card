@@ -1,5 +1,6 @@
 'use client';
 
+import type { RefObject } from 'react';
 import {
   forwardRef,
   useEffect,
@@ -18,7 +19,8 @@ import {
   Shadow,
 } from 'fabric';
 
-type ThemeName = 'classic' | 'sunset' | 'neon';
+import { THEME_STYLES, type ThemeName } from '../lib/themes';
+
 type ColorProp = 'fill' | 'stroke';
 
 export interface SelectedElementInfo {
@@ -29,6 +31,8 @@ export interface SelectedElementInfo {
 export interface IdCanvasHandle {
   /** Apply a color to whichever element is currently selected on the canvas. */
   setSelectedColor: (color: string) => void;
+  /** Push a new value into one of the four editable text fields. */
+  setFieldText: (field: 'header' | 'name' | 'stack' | 'role', value: string) => void;
 }
 
 interface IdCanvasProps {
@@ -38,12 +42,6 @@ interface IdCanvasProps {
   /** Fired whenever the selected element (or lack thereof) changes. */
   onSelectObject?: (info: SelectedElementInfo | null) => void;
 }
-
-const THEME_STYLES: Record<ThemeName, { bg: string; text: string; accent: string; cardBody: string }> = {
-  classic: { bg: '#0B5B33', text: '#FFFFFF', accent: '#FF007A', cardBody: '#FFFDE8' },
-  sunset: { bg: '#FFE600', text: '#0B5B33', accent: '#FF007A', cardBody: '#FFFFFF' },
-  neon: { bg: '#0b0b0f', text: '#39ff14', accent: '#ff00ff', cardBody: '#070707' },
-};
 
 // Locks movement/scale/rotation on a shape so it can be clicked & recolored
 // without a user accidentally dragging it out of place.
@@ -75,6 +73,13 @@ const IdCanvas = forwardRef<IdCanvasHandle, IdCanvasProps>(function IdCanvas(
   // Persists user-picked colors (keyed by label) across theme rebuilds,
   // since switching theme recreates every canvas object from scratch.
   const customColorsRef = useRef<Record<string, string>>({});
+  // Same idea, but for the editable text fields (header/name/stack/role) —
+  // populated either by typing in the sidebar or double-clicking the canvas.
+  const customTextRef = useRef<Record<string, string>>({});
+  // Tracks the previous theme so we can tell "user picked a new theme"
+  // (colors should reset to that theme's palette) apart from "first mount"
+  // (nothing to reset).
+  const prevThemeRef = useRef<ThemeName | null>(null);
 
   useImperativeHandle(
     ref,
@@ -89,6 +94,20 @@ const IdCanvas = forwardRef<IdCanvasHandle, IdCanvasProps>(function IdCanvas(
         customColorsRef.current[info.label] = color;
         fabricCanvas.requestRenderAll();
         onSelectObject?.({ label: info.label, color });
+      },
+      setFieldText: (field, value) => {
+        if (!fabricCanvas) return;
+        const fieldMap: Record<string, { ref: RefObject<IText | null>; label: string }> = {
+          header: { ref: headerTextRef, label: 'Header Text' },
+          name: { ref: nameInputRef, label: 'Name Text' },
+          stack: { ref: stackInputRef, label: 'Stack Text' },
+          role: { ref: roleInputRef, label: 'Role Text' },
+        };
+        const entry = fieldMap[field];
+        if (!entry?.ref.current) return;
+        entry.ref.current.set('text', value);
+        customTextRef.current[entry.label] = value;
+        fabricCanvas.requestRenderAll();
       },
     }),
     [fabricCanvas, onSelectObject],
@@ -107,6 +126,15 @@ const IdCanvas = forwardRef<IdCanvasHandle, IdCanvasProps>(function IdCanvas(
     });
 
     setFabricCanvas(canvas);
+
+    // Picking a new theme should apply that theme's palette everywhere —
+    // it shouldn't be fighting with colors you picked under a previous
+    // theme. Only clear on an actual switch, not on first mount.
+    if (prevThemeRef.current !== null && prevThemeRef.current !== theme) {
+      customColorsRef.current = {};
+    }
+    prevThemeRef.current = theme;
+
     const styles = THEME_STYLES[theme];
     const labelMap = new Map<FabricObject, { label: string; colorProp: ColorProp }>();
 
@@ -164,6 +192,7 @@ const IdCanvas = forwardRef<IdCanvasHandle, IdCanvasProps>(function IdCanvas(
     });
     headerTextRef.current = headerText;
     registerColorable(headerText, 'Header Text');
+    if (customTextRef.current['Header Text']) headerText.set('text', customTextRef.current['Header Text']);
 
     // 5. Polaroid Photo Frame
     const polaroidFrame = new Rect({
@@ -187,7 +216,7 @@ const IdCanvas = forwardRef<IdCanvasHandle, IdCanvasProps>(function IdCanvas(
     const labelX = 85;
     const inputX = 145;
     const labelProps = { originX: 'left' as const, originY: 'center' as const, fontFamily: 'monospace', fontSize: 14, fill: '#555', selectable: false, evented: false };
-    const inputProps = { originX: 'left' as const, originY: 'center' as const, fontFamily: 'monospace', fontSize: 18, fontWeight: 'bold', fill: '#000', selectable: true, editable: true, cursorColor: styles.accent };
+    const inputProps = { originX: 'left' as const, originY: 'center' as const, fontFamily: 'monospace', fontSize: 18, fontWeight: 'bold', fill: styles.inputText, selectable: true, editable: true, cursorColor: styles.accent };
     const lineProps = { originX: 'left' as const, originY: 'center' as const, left: 140, width: 220, height: 2, fill: '#000', selectable: false, evented: false };
 
     // Name
@@ -196,6 +225,7 @@ const IdCanvas = forwardRef<IdCanvasHandle, IdCanvasProps>(function IdCanvas(
     const nameInput = new IText("YASH JAIN", { left: inputX, top: 415, ...inputProps });
     nameInputRef.current = nameInput;
     registerColorable(nameInput, 'Name Text');
+    if (customTextRef.current['Name Text']) nameInput.set('text', customTextRef.current['Name Text']);
     const nameLine = new Rect({ top: 430, ...lineProps });
     registerColorable(nameLine, 'Name Divider');
 
@@ -205,6 +235,7 @@ const IdCanvas = forwardRef<IdCanvasHandle, IdCanvasProps>(function IdCanvas(
     const stackInput = new IText("NEXT.JS / TS", { left: inputX, top: 460, ...inputProps });
     stackInputRef.current = stackInput;
     registerColorable(stackInput, 'Stack Text');
+    if (customTextRef.current['Stack Text']) stackInput.set('text', customTextRef.current['Stack Text']);
     const stackLine = new Rect({ top: 475, ...lineProps });
     registerColorable(stackLine, 'Stack Divider');
 
@@ -214,6 +245,7 @@ const IdCanvas = forwardRef<IdCanvasHandle, IdCanvasProps>(function IdCanvas(
     const roleInput = new IText("FULL-STACK BUILDER", { left: inputX, top: 505, ...inputProps });
     roleInputRef.current = roleInput;
     registerColorable(roleInput, 'Role Text');
+    if (customTextRef.current['Role Text']) roleInput.set('text', customTextRef.current['Role Text']);
     const roleLine = new Rect({ top: 520, ...lineProps });
     registerColorable(roleLine, 'Role Divider');
 
@@ -239,7 +271,7 @@ const IdCanvas = forwardRef<IdCanvasHandle, IdCanvasProps>(function IdCanvas(
     const foilText = new IText("HH 2026 VERIFIED", {
       left: centerX, top: 565, originX: 'center', originY: 'center',
       fontFamily: 'monospace', fontSize: 16, fontWeight: 'bold',
-      fill: 'rgba(255,255,255,0.9)', selectable: false, evented: false,
+      fill: '#000000', selectable: false, evented: false,
     });
     registerColorable(foilText, 'Foil Text');
 
@@ -301,6 +333,17 @@ const IdCanvas = forwardRef<IdCanvasHandle, IdCanvasProps>(function IdCanvas(
     canvas.on('selection:created', reportSelection);
     canvas.on('selection:updated', reportSelection);
     canvas.on('selection:cleared', () => onSelectObject?.(null));
+
+    // Double-click-to-edit on the canvas should survive theme switches too.
+    canvas.on('text:changed', (e) => {
+      const obj = e.target as FabricObject | undefined;
+      if (!obj) return;
+      const info = objLabelMapRef.current.get(obj);
+      const text = (obj as unknown as { text?: string }).text;
+      if (info && typeof text === 'string') {
+        customTextRef.current[info.label] = text;
+      }
+    });
 
     canvas.requestRenderAll();
 

@@ -4,25 +4,57 @@ import dynamic from 'next/dynamic';
 import { type ChangeEvent, useRef, useState } from 'react';
 import { 
   Download, Image as ImageIcon, Layers, LayoutTemplate, 
-  MousePointer2, Palette, Share2, Square, Type, Settings2, Link, Pipette
+  MousePointer2, Palette, Share2, Square, Type, Settings2, Link, Pipette, Eye, X
 } from 'lucide-react';
 import type { IdCanvasHandle, SelectedElementInfo } from '../src/components/IdCanvas';
+import { THEME_STYLES, THEME_ORDER, type ThemeName } from '../src/lib/themes';
 
 const Background3D = dynamic(() => import('../src/components/Background3D'), { ssr: false });
 const IdCanvas = dynamic(() => import('../src/components/IdCanvas'), { ssr: false });
-
-type ThemeName = 'classic' | 'sunset' | 'neon';
+const LanyardBadge = dynamic(() => import('../src/components/LanyardBadge'), { ssr: false });
 
 export default function Home() {
   const [image, setImage] = useState<string | null>(null);
   const [theme, setTheme] = useState<ThemeName>('classic');
   const [textColor, setTextColor] = useState<string>('#000000');
   const [selected, setSelected] = useState<SelectedElementInfo | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [fields, setFields] = useState({
+    header: "HACKER HOUSE GOA '26",
+    name: 'YASH JAIN',
+    stack: 'NEXT.JS / TS',
+    role: 'FULL-STACK BUILDER',
+  });
   const idCanvasRef = useRef<IdCanvasHandle>(null);
+
+  const handleFieldChange = (field: keyof typeof fields, value: string) => {
+    setFields((prev) => ({ ...prev, [field]: value }));
+    idCanvasRef.current?.setFieldText(field, value);
+  };
 
   const handleSelectedColorChange = (color: string) => {
     idCanvasRef.current?.setSelectedColor(color);
     setSelected((prev) => (prev ? { ...prev, color } : prev));
+  };
+
+  const handleThemeSelect = (key: ThemeName) => {
+    setTheme(key);
+    // Clear any manual "Text Color" override from a previous theme so the
+    // new theme's own Name/Stack/Role color actually takes effect.
+    setTextColor('');
+  };
+
+  const getCardDataUrl = () => {
+    const canvasElement = document.querySelector(
+      '#badge-canvas canvas.lower-canvas',
+    ) as HTMLCanvasElement | null;
+    return canvasElement ? canvasElement.toDataURL('image/png') : null;
+  };
+
+  const handleOpenPreview = () => {
+    setPreviewImage(getCardDataUrl());
+    setPreviewOpen(true);
   };
 
   const handleImageUpload = (event: ChangeEvent<HTMLInputElement>) => {
@@ -37,13 +69,9 @@ export default function Home() {
   };
 
   const handleDownload = () => {
-    const canvasElement = document.querySelector(
-      '#badge-canvas canvas.lower-canvas',
-    ) as HTMLCanvasElement | null;
+    const url = getCardDataUrl();
+    if (!url) return;
 
-    if (!canvasElement) return;
-
-    const url = canvasElement.toDataURL('image/png');
     const link = document.createElement('a');
     link.download = 'HHGoa2026-Badge.png';
     link.href = url;
@@ -78,6 +106,9 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* <button onClick={handleOpenPreview} className="flex items-center gap-2 border-2 border-black bg-white px-3 py-1.5 text-xs font-bold uppercase shadow-[2px_2px_0px_#000] hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-[1px_1px_0px_#000] active:shadow-none">
+            <Eye size={14} /> 3D Preview
+          </button> */}
           <button onClick={handleDownload} className="flex items-center gap-2 border-2 border-black bg-[#FFE600] px-3 py-1.5 text-xs font-bold uppercase shadow-[2px_2px_0px_#000] hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-[1px_1px_0px_#000] active:shadow-none">
             <Download size={14} /> Export
           </button>
@@ -174,13 +205,75 @@ export default function Home() {
                 </div>
                 <button onClick={() => { setTheme('neon'); setTextColor('#39ff14'); }} className="mt-2 inline-block border-2 border-black bg-[#FF007A] text-white px-3 py-1 text-xs font-bold uppercase">Apply Neon Preset</button>
               </div>
-              <div>
-                <p className="font-mono text-xs font-bold mb-2 uppercase text-gray-500">Theme Colors</p>
-                <div className="grid grid-cols-1 gap-2">
-                  <button onClick={() => setTheme('classic')} className={`border-2 border-black p-2 text-xs font-bold uppercase ${theme === 'classic' ? 'bg-[#0B5B33] text-white shadow-[2px_2px_0px_#000]' : 'bg-gray-100'}`}>Goa Green</button>
-                  <button onClick={() => setTheme('sunset')} className={`border-2 border-black p-2 text-xs font-bold uppercase ${theme === 'sunset' ? 'bg-[#FFE600] text-black shadow-[2px_2px_0px_#000]' : 'bg-gray-100'}`}>Sun Yellow</button>
-                  <button onClick={() => setTheme('neon')} className={`border-2 border-black p-2 text-xs font-bold uppercase ${theme === 'neon' ? 'bg-[#222222] text-[#FF007A] shadow-[2px_2px_0px_#FF007A]' : 'bg-gray-100'}`}>Neon Night</button>
+              <div className="pt-4 border-t-2 border-dashed border-gray-300">
+                <p className="font-mono text-xs font-bold mb-2 uppercase text-gray-500">Card Text</p>
+                <div className="space-y-2">
+                  <div>
+                    <label className="block font-mono text-[10px] font-bold uppercase text-gray-400">Header</label>
+                    <input
+                      type="text"
+                      value={fields.header}
+                      onChange={(e) => handleFieldChange('header', e.target.value)}
+                      className="w-full border-2 border-black px-2 py-1 font-mono text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-mono text-[10px] font-bold uppercase text-gray-400">Name</label>
+                    <input
+                      type="text"
+                      value={fields.name}
+                      onChange={(e) => handleFieldChange('name', e.target.value)}
+                      className="w-full border-2 border-black px-2 py-1 font-mono text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-mono text-[10px] font-bold uppercase text-gray-400">Stack</label>
+                    <input
+                      type="text"
+                      value={fields.stack}
+                      onChange={(e) => handleFieldChange('stack', e.target.value)}
+                      className="w-full border-2 border-black px-2 py-1 font-mono text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-mono text-[10px] font-bold uppercase text-gray-400">Role</label>
+                    <input
+                      type="text"
+                      value={fields.role}
+                      onChange={(e) => handleFieldChange('role', e.target.value)}
+                      className="w-full border-2 border-black px-2 py-1 font-mono text-xs"
+                    />
+                  </div>
                 </div>
+              </div>
+
+              <div>
+                <p className="font-mono text-xs font-bold mb-2 uppercase text-gray-500">Theme</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {THEME_ORDER.map((key) => {
+                    const style = THEME_STYLES[key];
+                    const active = theme === key;
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => handleThemeSelect(key)}
+                        className={`flex items-center gap-2 border-2 border-black p-2 text-left text-[10px] font-bold uppercase ${active ? 'shadow-[2px_2px_0px_#000]' : ''}`}
+                        style={{ backgroundColor: active ? style.bg : '#f3f4f6', color: active ? style.text : '#000' }}
+                      >
+                        <span
+                          className="h-4 w-4 shrink-0 rounded-full border-2 border-black"
+                          style={{ backgroundColor: style.bg }}
+                        />
+                        {style.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {theme === 'custom' && (
+                  <p className="mt-2 font-mono text-[10px] text-gray-500">
+                    Blank palette — click any part of the card above and recolor it piece by piece.
+                  </p>
+                )}
               </div>
 
               <div className="pt-4 border-t-2 border-dashed border-gray-300">
@@ -194,6 +287,28 @@ export default function Home() {
           </div>
         </aside>
       </div>
+
+      {/* 3D Hanging Badge Preview
+      {previewOpen && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-black/90">
+          <div className="flex shrink-0 items-center justify-between border-b-2 border-black bg-[#FFFDE8] px-4 py-3">
+            <span className="font-mono text-sm font-bold uppercase tracking-widest text-[#0B5B33]">
+              🪪 Badge Preview — drag it around!
+            </span>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setPreviewImage(getCardDataUrl())} className="border-2 border-black bg-white px-3 py-1.5 text-xs font-bold uppercase shadow-[2px_2px_0px_#000]">
+                Refresh
+              </button>
+              <button onClick={() => setPreviewOpen(false)} className="flex items-center gap-1 border-2 border-black bg-[#FF007A] text-white px-3 py-1.5 text-xs font-bold uppercase shadow-[2px_2px_0px_#000]">
+                <X size={14} /> Close
+              </button>
+            </div>
+          </div>
+          <div className="flex-1">
+            <LanyardBadge imageUrl={previewImage} theme={theme} />
+          </div>
+        </div>
+      )} */}
     </main>
   );
 }
