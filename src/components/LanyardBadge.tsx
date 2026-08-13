@@ -126,11 +126,11 @@ export default function LanyardBadge({ imageUrl, theme }: LanyardBadgeProps) {
 function Band({ maxSpeed = 50, minSpeed = 10, imageUrl, theme }: { maxSpeed?: number; minSpeed?: number; imageUrl: string | null; theme: ThemeName }) {
   const styles = THEME_STYLES[theme];
   const band = useRef<THREE.Mesh>(null);
-  const fixed = useRef(null);
-  const j1 = useRef(null);
-  const j2 = useRef(null);
-  const j3 = useRef(null);
-  const card = useRef(null);
+  const fixed = useRef<any>(null);
+  const j1 = useRef<any>(null);
+  const j2 = useRef<any>(null);
+  const j3 = useRef<any>(null);
+  const card = useRef<any>(null);
 
   const vec = new THREE.Vector3();
   const ang = new THREE.Vector3();
