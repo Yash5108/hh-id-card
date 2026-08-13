@@ -821,7 +821,7 @@ const IdCanvas = forwardRef<IdCanvasHandle, IdCanvasProps>(function IdCanvas(
       const photoClip = new Circle({
         radius: 80,
         left: 225,
-        top: 100 + 215,
+        top: 100 + 235,
         originX: 'center',
         originY: 'center',
         absolutePositioned: true,
@@ -829,7 +829,7 @@ const IdCanvas = forwardRef<IdCanvasHandle, IdCanvasProps>(function IdCanvas(
 
       const image = new FabricImage(imageElement, {
         left: 225,
-        top: 100 + 215,
+        top: 100 + 235,
         originX: 'center',
         originY: 'center',
         selectable: true,
