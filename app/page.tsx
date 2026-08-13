@@ -87,11 +87,93 @@ export default function Home() {
     backLink.click();
   };
 
-  const handleShare = () => {
-    const text = encodeURIComponent(
-      'Just minted my official builder pass for @HackerHouseGoa 2026! 🌴🚀 See you in Goa! #FrameInGoa'
-    );
-    window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
+  const handleShare = async () => {
+    const tweetText = 'Just minted my official builder pass for @HackerHouseGoa 2026! 🌴🚀 See you in Goa! #FrameInGoa';
+
+    // Export both card faces
+    const exported = idCanvasRef.current?.exportBoth();
+    if (!exported || !exported.front || !exported.back) {
+      // Fallback: just open tweet with text
+      const text = encodeURIComponent(tweetText);
+      window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
+      return;
+    }
+
+    // Combine front + back into a single side-by-side image
+    const loadImg = (src: string): Promise<HTMLImageElement> =>
+      new Promise((resolve, reject) => {
+        const img = new window.Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = src;
+      });
+
+    try {
+      const [frontImg, backImg] = await Promise.all([
+        loadImg(exported.front),
+        loadImg(exported.back),
+      ]);
+
+      const gap = 40;
+      const combinedCanvas = document.createElement('canvas');
+      combinedCanvas.width = frontImg.width + backImg.width + gap * 3;
+      combinedCanvas.height = Math.max(frontImg.height, backImg.height) + gap * 2;
+      const cctx = combinedCanvas.getContext('2d');
+      if (!cctx) return;
+
+      // Background
+      cctx.fillStyle = '#FFFDE8';
+      cctx.fillRect(0, 0, combinedCanvas.width, combinedCanvas.height);
+
+      // Draw both cards
+      cctx.drawImage(frontImg, gap, gap);
+      cctx.drawImage(backImg, frontImg.width + gap * 2, gap);
+
+      // Labels
+      cctx.font = 'bold 18px monospace';
+      cctx.textAlign = 'center';
+      cctx.fillStyle = '#0B5B33';
+      cctx.fillText('FRONT', gap + frontImg.width / 2, combinedCanvas.height - 10);
+      cctx.fillText('BACK', frontImg.width + gap * 2 + backImg.width / 2, combinedCanvas.height - 10);
+
+      // Convert to blob
+      const blob = await new Promise<Blob | null>((resolve) =>
+        combinedCanvas.toBlob(resolve, 'image/png')
+      );
+
+      if (!blob) {
+        const text = encodeURIComponent(tweetText);
+        window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
+        return;
+      }
+
+      const file = new File([blob], 'HHGoa2026-Badge.png', { type: 'image/png' });
+
+      // Try Web Share API (works on mobile + some desktop browsers)
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          text: tweetText,
+          files: [file],
+        });
+      } else {
+        // Fallback: download the combined image, then open tweet compose
+        const link = document.createElement('a');
+        link.download = 'HHGoa2026-Badge.png';
+        link.href = URL.createObjectURL(blob);
+        link.click();
+        URL.revokeObjectURL(link.href);
+
+        // Brief delay so the download starts, then open tweet compose
+        setTimeout(() => {
+          const text = encodeURIComponent(tweetText);
+          window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
+        }, 500);
+      }
+    } catch {
+      // If anything fails, just open the tweet
+      const text = encodeURIComponent(tweetText);
+      window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
+    }
   };
 
   // Shared properties panel content (used in both desktop sidebar and mobile drawer)
